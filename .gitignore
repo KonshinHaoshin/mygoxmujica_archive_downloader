@@ -1,6 +1,6 @@
 .idea
-icon.png
 __pycache__
 icon.ico
 dist
 build
+main.spec

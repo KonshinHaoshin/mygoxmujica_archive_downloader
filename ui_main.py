@@ -14,6 +14,14 @@ def resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.abspath("."), relative_path)
+def load_stylesheet():
+    qss_path = os.path.join(os.path.dirname(__file__), "style.qss")
+    icon_path = os.path.join(os.path.dirname(__file__), "down_arrow_cute.png").replace("\\", "/")
+    with open(qss_path, encoding="utf-8") as f:
+        qss = f.read()
+        qss = qss.replace("url(down_arrow_cute.png)", f"url({icon_path})")
+        return qss
+
 class MainWindow(QMainWindow):
     def __init__(self):
 

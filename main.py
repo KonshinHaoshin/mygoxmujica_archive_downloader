@@ -1,15 +1,18 @@
-from PyQt5.QtWidgets import QApplication
-from ui_main import MainWindow
+from PyQt5.QtWidgets import QApplication, QMessageBox
+from ui_main import MainWindow, load_stylesheet
 import sys
 import traceback
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setStyleSheet(load_stylesheet())
+
     try:
         window = MainWindow()
         window.show()
         sys.exit(app.exec_())
     except Exception as e:
-        print("程序异常退出：", e)
-        traceback.print_exc()
-        input("按任意键退出")
+        msg = QMessageBox()
+        msg.setWindowTitle("出错了")
+        msg.setText("程序异常退出，请检查网络或镜像源设置")
+        msg.exec_()
