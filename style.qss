@@ -1,0 +1,80 @@
+QWidget {
+    background-color: #fff0f5;
+    font-family: "Microsoft YaHei";
+    font-size: 14px;
+    color: #4B2E83;
+}
+
+QPushButton {
+    background-color: #f9c8d9;
+    border: 1px solid #f3a6c1;
+    border-radius: 8px;
+    padding: 6px 12px;
+    color: #4B2E83;
+}
+QPushButton:hover {
+    background-color: #f3a6c1;
+}
+QPushButton:pressed {
+    background-color: #e38cae;
+}
+
+QComboBox {
+    background-color: #ffffff;
+    border: 1px solid #f3a6c1;
+    padding: 4px;
+    border-radius: 6px;
+}
+
+QListWidget {
+    background-color: #fff8fb;
+    border: 1px solid #f3a6c1;
+    padding: 4px;
+}
+
+QLineEdit {
+    background-color: #fff8fb;
+    border: 1px solid #f3a6c1;
+    border-radius: 6px;
+    padding: 4px;
+}
+
+QProgressBar {
+    border: 1px solid #f3a6c1;
+    border-radius: 5px;
+    background-color: #fff8fb;
+    text-align: center;
+}
+QProgressBar::chunk {
+    background-color: #f3a6c1;
+    width: 20px;
+}
+
+QLabel {
+    color: #4B2E83;
+}
+
+QComboBox {
+    background-color: #ffeef4;
+    border: 1px solid #f3a6c1;
+    border-radius: 8px;
+    padding: 4px;
+    padding-right: 20px;
+    color: #4B2E83;
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 20px;
+    border-left: 1px solid #f3a6c1;
+    background-color: #f9c8d9;
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+QComboBox::down-arrow {
+    image: url(down_arrow_cute.png);
+    width: 12px;
+    height: 12px;
+}
