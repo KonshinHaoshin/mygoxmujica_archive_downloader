@@ -45,4 +45,6 @@ class DownloadThread(QThread):
             return f"https://ghproxy.com/{url}"
         elif mirror == "jsdelivr":
             return url.replace("https://raw.githubusercontent.com/", "https://cdn.jsdelivr.net/gh/").replace("/main/", "@main/")
+        elif mirror == "tbedu":
+            return f"https://github.tbedu.top/{url}"
         return url

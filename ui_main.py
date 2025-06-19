@@ -44,7 +44,7 @@ class MainWindow(QMainWindow):
         self.stop_button.clicked.connect(self.stop_download)
 
         self.mirror_box = QComboBox()
-        self.mirror_box.addItems(["jsdelivr", "raw", "ghproxy"])
+        self.mirror_box.addItems(["jsdelivr", "raw", "ghproxy", "tbedu"])
         self.mirror_box.setCurrentText("jsdelivr")
         self.list_widget.currentRowChanged.connect(self.update_file_info)
         self.last_save_dir = os.getcwd()  # 记住上次选择的目录
@@ -68,6 +68,7 @@ class MainWindow(QMainWindow):
         🔹 jsdelivr：✅ 国内高速稳定，适合小/中级文件，仅对更新有缓存延迟  
         🔹 raw：直连 GitHub，实时源码，适合调试，但国内不稳定  
         🔹 ghproxy：备用方案，但已不可靠，易超时或无响应  
+        🔹 tbedu：📦 新增！tbedu 直链镜像，适合 raw.githubusercontent 文件加速
         """)
 
         self.mirror_desc.setWordWrap(True)
