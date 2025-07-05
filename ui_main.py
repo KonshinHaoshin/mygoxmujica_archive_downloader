@@ -4,12 +4,15 @@ from PyQt5.QtWidgets import (
     QMainWindow, QPushButton, QListWidget, QVBoxLayout, QWidget,
     QFileDialog, QComboBox, QLabel, QLineEdit, QApplication, QProgressBar
 )
-
+from PyQt5.QtWidgets import QCheckBox
 from download_thread import DownloadThread
 from github_api import list_github_contents, list_all_files_recursive, list_folders_only
 from downloader import download_file, download_file_with_progress
 import os
 from PyQt5.QtGui import QIcon
+import shutil
+import tarfile
+import zipfile
 def resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
@@ -21,6 +24,27 @@ def load_stylesheet():
         qss = f.read()
         qss = qss.replace("url(down_arrow_cute.png)", f"url({icon_path})")
         return qss
+
+def is_supported_archive(filename):
+    return any(filename.endswith(ext) for ext in [
+        ".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz"
+    ])
+
+def extract_archive(file_path, extract_to):
+    try:
+        if file_path.endswith(".zip"):
+            import zipfile
+            with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_to)
+        elif file_path.endswith((".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".tar")):
+            import tarfile
+            with tarfile.open(file_path, 'r:*') as tar_ref:
+                tar_ref.extractall(extract_to)
+        return True
+    except Exception as e:
+        print("解压失败：", e)
+        return False
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -76,6 +100,10 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.mirror_label)
         layout.addWidget(self.mirror_box)
         layout.addWidget(self.mirror_desc)
+
+        self.auto_extract_checkbox = QCheckBox("下载完成后自动解压（并删除源文件）")
+        self.auto_extract_checkbox.setChecked(True)  # 默认开启
+        layout.addWidget(self.auto_extract_checkbox)
 
         # 加入状态显示和进度条
         layout.addWidget(QLabel("⬇ 当前状态："))
@@ -191,3 +219,14 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(100 if success else 0)
         self.status_label.setText(message)
         self.stop_button.setEnabled(False)
+
+        if success and self.auto_extract_checkbox.isChecked():
+            save_path = self.thread.save_path
+            if is_supported_archive(save_path):
+                extract_to = os.path.dirname(save_path)
+                extracted = extract_archive(save_path, extract_to)
+                if extracted:
+                    os.remove(save_path)
+                    self.status_label.setText(f"{message}，已自动解压并删除源文件")
+                else:
+                    self.status_label.setText(f"{message}，但解压失败")
