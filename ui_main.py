@@ -1,3 +1,4 @@
+import stat
 import sys
 
 from PyQt5.QtWidgets import (
@@ -5,6 +6,8 @@ from PyQt5.QtWidgets import (
     QFileDialog, QComboBox, QLabel, QLineEdit, QApplication, QProgressBar
 )
 from PyQt5.QtWidgets import QCheckBox
+import chardet
+
 from download_thread import DownloadThread
 from github_api import list_github_contents, list_all_files_recursive, list_folders_only
 from downloader import download_file, download_file_with_progress
@@ -30,21 +33,29 @@ def is_supported_archive(filename):
         ".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz"
     ])
 
+
 def extract_archive(file_path, extract_to):
     try:
-        if file_path.endswith(".zip"):
-            import zipfile
-            with zipfile.ZipFile(file_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_to)
-        elif file_path.endswith((".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".tar")):
-            import tarfile
-            with tarfile.open(file_path, 'r:*') as tar_ref:
-                tar_ref.extractall(extract_to)
+        with zipfile.ZipFile(file_path, 'r') as zip_ref:
+            for zip_info in zip_ref.infolist():
+                # 尝试用 cp437 解码原始名称，再用 chardet 检测其真实编码（如 GBK）
+                raw_filename = zip_info.filename.encode('cp437')
+                detected = chardet.detect(raw_filename)
+                encoding = detected['encoding'] or 'utf-8'
+
+                try:
+                    decoded_filename = raw_filename.decode(encoding)
+                except UnicodeDecodeError:
+                    decoded_filename = raw_filename.decode('gbk', errors='ignore')  # 兜底
+
+                # 替换路径为解码后的（防止乱码）
+                zip_info.filename = decoded_filename
+                zip_ref.extract(zip_info, extract_to)
+        print("✅ 解压成功，自动修正中文路径编码。")
         return True
     except Exception as e:
-        print("解压失败：", e)
+        print("❌ 解压失败：", e)
         return False
-
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -224,9 +235,12 @@ class MainWindow(QMainWindow):
             save_path = self.thread.save_path
             if is_supported_archive(save_path):
                 extract_to = os.path.dirname(save_path)
-                extracted = extract_archive(save_path, extract_to)
-                if extracted:
-                    os.remove(save_path)
-                    self.status_label.setText(f"{message}，已自动解压并删除源文件")
-                else:
-                    self.status_label.setText(f"{message}，但解压失败")
+                try:
+                    extracted = extract_archive(save_path, extract_to)
+                    if extracted:
+                        os.remove(save_path)
+                        self.status_label.setText(f"{message}，已自动解压并删除源文件")
+                    else:
+                        self.status_label.setText(f"{message}，但解压失败")
+                except Exception as e:
+                    self.status_label.setText(f"{message}，解压异常：{str(e)}")
