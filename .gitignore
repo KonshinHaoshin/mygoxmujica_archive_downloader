@@ -4,3 +4,4 @@ icon.ico
 dist
 build
 main.spec
+.env

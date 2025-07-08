@@ -77,3 +77,8 @@ python main.py
 
 MIT License - 欢迎自由使用和改进！
 
+
+## 打包方式
+```bash
+pyinstaller -w -F main.py --icon=icon.ico --add-data "style.qss;." --add-data "down_arrow_cute.png;." --add-data "icon.png;."
+```

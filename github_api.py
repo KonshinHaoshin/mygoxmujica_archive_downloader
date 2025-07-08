@@ -1,9 +1,17 @@
 import requests
 
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # 加载 .env 文件中的环境变量
+
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
+
 def list_github_contents(owner, repo, path=""):
     url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
     try:
-        r = requests.get(url, timeout=10)
+        r = requests.get(url, headers=HEADERS, timeout=10)
         r.raise_for_status()
         return r.json()
     except requests.exceptions.RequestException as e:

@@ -1,9 +1,10 @@
 import stat
+import subprocess
 import sys
 
 from PyQt5.QtWidgets import (
     QMainWindow, QPushButton, QListWidget, QVBoxLayout, QWidget,
-    QFileDialog, QComboBox, QLabel, QLineEdit, QApplication, QProgressBar
+    QFileDialog, QComboBox, QLabel, QLineEdit, QApplication, QProgressBar, QMessageBox
 )
 from PyQt5.QtWidgets import QCheckBox
 import chardet
@@ -16,6 +17,10 @@ from PyQt5.QtGui import QIcon
 import shutil
 import tarfile
 import zipfile
+
+from github_hosts_updater import update_github_hosts
+
+
 def resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
@@ -30,37 +35,39 @@ def load_stylesheet():
 
 def is_supported_archive(filename):
     return any(filename.endswith(ext) for ext in [
-        ".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz"
+        ".zip", ".rar",  # 👈 加入 .rar 支持
+        ".tar", ".tar.gz", ".tgz",
+        ".tar.bz2", ".tbz2",
+        ".tar.xz", ".txz"
     ])
 
 
+
+
 def extract_archive(file_path, extract_to):
-    try:
-        with zipfile.ZipFile(file_path, 'r') as zip_ref:
-            for zip_info in zip_ref.infolist():
-                # 尝试用 cp437 解码原始名称，再用 chardet 检测其真实编码（如 GBK）
-                raw_filename = zip_info.filename.encode('cp437')
-                detected = chardet.detect(raw_filename)
-                encoding = detected['encoding'] or 'utf-8'
-
-                try:
-                    decoded_filename = raw_filename.decode(encoding)
-                except UnicodeDecodeError:
-                    decoded_filename = raw_filename.decode('gbk', errors='ignore')  # 兜底
-
-                # 替换路径为解码后的（防止乱码）
-                zip_info.filename = decoded_filename
-                zip_ref.extract(zip_info, extract_to)
-        print("✅ 解压成功，自动修正中文路径编码。")
-        return True
-    except Exception as e:
-        print("❌ 解压失败：", e)
+    exe_path = resource_path("7-Zip/7z.exe") # 确保路径正确
+    if not os.path.exists(exe_path):
+        print("❌ 找不到 7z.exe，请确认路径正确")
         return False
 
-class MainWindow(QMainWindow):
-    def __init__(self):
+    cmd = [exe_path, "x", file_path, f"-o{extract_to}", "-y"]  # -y 自动确认
+    try:
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode == 0:
+            print("✅ 使用 7-Zip 解压成功")
+            return True
+        else:
+            print("❌ 7-Zip 解压失败：", result.stderr)
+            return False
+    except Exception as e:
+        print("❌ 解压过程中出现异常：", e)
+        return False
 
+
+class MainWindow(QMainWindow):
+    def __init__(self, default_mirror="jsdelivr"):  # <== 新增参数
         super().__init__()
+
         with open(resource_path("style.qss"), "r", encoding="utf-8") as f:
             self.setStyleSheet(f.read())
 
@@ -80,9 +87,12 @@ class MainWindow(QMainWindow):
 
         self.mirror_box = QComboBox()
         self.mirror_box.addItems(["jsdelivr", "raw", "ghproxy", "tbedu"])
-        self.mirror_box.setCurrentText("jsdelivr")
+        self.mirror_box.setCurrentText(default_mirror)
         self.list_widget.currentRowChanged.connect(self.update_file_info)
         self.last_save_dir = os.getcwd()  # 记住上次选择的目录
+
+        self.update_hosts_button = QPushButton("💻 更新 GitHub Hosts（需要管理员权限）")
+        self.update_hosts_button.clicked.connect(self.update_github_hosts_action)
 
         # 输出控件先创建，防止后续调用报错
         self.status_label = QLabel("")
@@ -95,6 +105,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.load_button)
         layout.addWidget(self.search_bar)
         layout.addWidget(self.list_widget)
+        layout.addWidget(self.update_hosts_button)
         layout.addWidget(self.download_button)
         layout.addWidget(self.stop_button)
 
@@ -138,6 +149,14 @@ class MainWindow(QMainWindow):
         self.entries = []
         self.filtered_entries = []
         self.load_root_folders()
+
+    def update_github_hosts_action(self):
+        try:
+            update_github_hosts()
+            QMessageBox.information(self, "Hosts 更新", "✅ GitHub hosts 已更新完成，请刷新网络生效。")
+        except Exception as e:
+            QMessageBox.critical(self, "Hosts 更新失败", f"❌ 更新失败：{str(e)}\n请尝试以管理员身份运行本程序。")
+
 
     def update_file_info(self, index):
         if index < 0 or index >= len(self.filtered_entries):
