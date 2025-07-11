@@ -13,6 +13,7 @@
 - ✅ 可中断下载
 - ✅ 支持粉色樱花系 UI 样式美化
 - ✅ 一键打包为独立 `.exe` 文件（免 Python 运行）
+- ✅ 内置 7-Zip 解压支持
 
 ---
 
@@ -22,13 +23,17 @@
 mygoxmujica_archive_downloader/
 ├── main.py                   # 程序入口
 ├── ui_main.py                # 主界面逻辑
-├── github_api.py             # GitHub 文件加载逻辑
-├── downloader.py             # 下载工具函数
-├── download_thread.py        # 下载线程支持
-├── style.qss                 # 粉色樱花 UI 样式表
+├── github_api.py             # GitHub API 目录读取
+├── downloader.py             # 下载控制工具
+├── download_thread.py        # 多线程下载支持
+├── github_hosts_updater.py   # Hosts 更新辅助（管理员权限）
+├── 7-Zip/                    # 内置解压工具（打包后独立运行）
+├── style.qss                 # UI 样式表
 ├── icon.png / icon.ico       # 图标资源
-├── down_arrow_cute.png       # 下拉框箭头图标
-└── README.md                 # 使用说明
+├── down_arrow_cute.png       # 自定义下拉箭头
+├── .env                      # GitHub Token 环境变量,如需要请自行添加
+├── .gitignore                
+└── README.md                 # 本说明文档
 ```
 
 ------
@@ -37,7 +42,43 @@ mygoxmujica_archive_downloader/
 
 ### 方式一：源码运行
 
-确保你已安装 Python 3.8+ 和 PyQt5：
+确保你已安装 Python 3.8+、PyQt5、python-dotenv：
+
+pip install PyQt5 python-dotenv
+python main.py
+
+推荐在项目根目录新建 .env 文件，内容如下：
+
+GITHUB_TOKEN=你的github token
+
+> 用于避免触发 GitHub API 匿名限速，安全读取，无需写入代码中。
+
+### 方式二：使用 release 打包版本（推荐）
+
+    下载发布页中的 .exe 文件（已包含 7z 解压器）
+
+    将 .env 文件与 .exe 放在同一目录（可选）
+
+    双击运行，无需安装 Python
+
+## 镜像源说明
+| 镜像源          | 特性说明                        |
+| ------------ | --------------------------- |
+| `jsdelivr` ✅ | 推荐：国内稳定，适合小中型文件，自动缓存，更新稍有延迟 |
+| `raw`        | 实时直连 GitHub，适合调试，但国内经常失败    |
+| `ghproxy`    | 备用方案，目前不稳定，频繁超时             |
+| `tbedu`      | 新增中国大陆加速镜像，效果待观察            |
+
+## 🔐 .env 文件说明
+
+
+用于在运行时配置 GitHub API token，避免被限速：
+```env
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+```
+
+项目默认会读取 .exe 所在目录的 .env 文件,因此您可以在release界面下载后在所在目录下添加.env文件
+
 
 ```bash
 python main.py
@@ -71,7 +112,6 @@ python main.py
 
 - GitHub：[KonshinHaoshin](https://github.com/KonshinHaoshin)
 
-  
 
 ## 📜 License
 
