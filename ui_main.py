@@ -1,30 +1,29 @@
-import stat
-import subprocess
+# ui_main.py
+import os
 import sys
+import subprocess
 
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
     QMainWindow, QPushButton, QListWidget, QVBoxLayout, QWidget,
-    QFileDialog, QComboBox, QLabel, QLineEdit, QApplication, QProgressBar, QMessageBox
+    QFileDialog, QComboBox, QLabel, QLineEdit, QProgressBar,
+    QMessageBox, QCheckBox
 )
-from PyQt5.QtWidgets import QCheckBox
-import chardet
 
 from download_thread import DownloadThread
-from github_api import list_github_contents, list_all_files_recursive, list_folders_only
+from github_api import list_all_files_recursive, list_folders_only
 from downloader import download_file, download_file_with_progress
-import os
-from PyQt5.QtGui import QIcon
-import shutil
-import tarfile
-import zipfile
-
 from github_hosts_updater import update_github_hosts
+from preview_worker import PreviewDialog  # 新增导入
 
 
 def resource_path(relative_path):
-    if hasattr(sys, '_MEIPASS'):
+    if hasattr(sys, "_MEIPASS"):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.abspath("."), relative_path)
+
+
 def load_stylesheet():
     qss_path = os.path.join(os.path.dirname(__file__), "style.qss")
     icon_path = os.path.join(os.path.dirname(__file__), "down_arrow_cute.png").replace("\\", "/")
@@ -33,24 +32,23 @@ def load_stylesheet():
         qss = qss.replace("url(down_arrow_cute.png)", f"url({icon_path})")
         return qss
 
+
 def is_supported_archive(filename):
     return any(filename.endswith(ext) for ext in [
-        ".zip", ".rar",  # 👈 加入 .rar 支持
+        ".zip", ".rar",
         ".tar", ".tar.gz", ".tgz",
         ".tar.bz2", ".tbz2",
         ".tar.xz", ".txz"
     ])
 
 
-
-
 def extract_archive(file_path, extract_to):
-    exe_path = resource_path("7-Zip/7z.exe") # 确保路径正确
+    exe_path = resource_path("7-Zip/7z.exe")
     if not os.path.exists(exe_path):
         print("❌ 找不到 7z.exe，请确认路径正确")
         return False
 
-    cmd = [exe_path, "x", file_path, f"-o{extract_to}", "-y"]  # -y 自动确认
+    cmd = [exe_path, "x", file_path, f"-o{extract_to}", "-y"]
     try:
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if result.returncode == 0:
@@ -65,15 +63,15 @@ def extract_archive(file_path, extract_to):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, default_mirror="jsdelivr"):  # <== 新增参数
+    def __init__(self, default_mirror="jsdelivr"):
         super().__init__()
 
         with open(resource_path("style.qss"), "r", encoding="utf-8") as f:
             self.setStyleSheet(f.read())
 
         self.setWindowIcon(QIcon(resource_path("icon.png")))
-
         self.setWindowTitle("mygoxmujica社区资源下载器 关注B站东山燃灯寺谢谢喵~")
+
         # 控件
         self.folder_box = QComboBox()
         self.search_bar = QLineEdit()
@@ -81,6 +79,7 @@ class MainWindow(QMainWindow):
         self.list_widget = QListWidget()
         self.load_button = QPushButton("加载选中目录内容")
         self.download_button = QPushButton("下载选中项")
+        self.preview_button = QPushButton("预览图片")  # 新增按钮
         self.stop_button = QPushButton("🛑 停止下载")
         self.stop_button.setEnabled(True)
         self.stop_button.clicked.connect(self.stop_download)
@@ -89,12 +88,11 @@ class MainWindow(QMainWindow):
         self.mirror_box.addItems(["jsdelivr", "raw", "ghproxy", "tbedu"])
         self.mirror_box.setCurrentText(default_mirror)
         self.list_widget.currentRowChanged.connect(self.update_file_info)
-        self.last_save_dir = os.getcwd()  # 记住上次选择的目录
+        self.last_save_dir = os.getcwd()
 
         self.update_hosts_button = QPushButton("💻 更新 GitHub Hosts（需要管理员权限）")
         self.update_hosts_button.clicked.connect(self.update_github_hosts_action)
 
-        # 输出控件先创建，防止后续调用报错
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
 
@@ -107,6 +105,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.list_widget)
         layout.addWidget(self.update_hosts_button)
         layout.addWidget(self.download_button)
+        layout.addWidget(self.preview_button)
         layout.addWidget(self.stop_button)
 
         self.mirror_label = QLabel("选择镜像源：")
@@ -116,7 +115,6 @@ class MainWindow(QMainWindow):
         🔹 ghproxy：备用方案，但已不可靠，易超时或无响应  
         🔹 tbedu：📦 新增！tbedu 直链镜像，适合 raw.githubusercontent 文件加速
         """)
-
         self.mirror_desc.setWordWrap(True)
 
         layout.addWidget(self.mirror_label)
@@ -124,10 +122,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.mirror_desc)
 
         self.auto_extract_checkbox = QCheckBox("下载完成后自动解压（并删除源文件）")
-        self.auto_extract_checkbox.setChecked(True)  # 默认开启
+        self.auto_extract_checkbox.setChecked(True)
         layout.addWidget(self.auto_extract_checkbox)
 
-        # 加入状态显示和进度条
         layout.addWidget(QLabel("⬇ 当前状态："))
         layout.addWidget(self.status_label)
 
@@ -144,11 +141,45 @@ class MainWindow(QMainWindow):
         self.load_button.clicked.connect(self.load_selected_folder_files)
         self.download_button.clicked.connect(self.download_selected)
         self.search_bar.textChanged.connect(self.filter_list)
+        self.preview_button.clicked.connect(self.preview_selected)  # 绑定预览
 
         # 初始化
         self.entries = []
         self.filtered_entries = []
         self.load_root_folders()
+
+    def preview_selected(self):
+        idx = self.list_widget.currentRow()
+        if idx == -1:
+            QMessageBox.warning(self, "提示", "请先选择一个文件")
+            return
+
+        entry = self.filtered_entries[idx]
+        path = entry.get("path", "").lower()
+        if not any(path.endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".gif", ".webp")):
+            QMessageBox.warning(self, "提示", "选中的不是图片文件")
+            return
+
+        # 根据镜像源拼 URL
+        mirror = self.mirror_box.currentText()
+        owner, repo, branch = "KonshinHaoshin", "mygoxmujica_archive", "main"
+        rel_path = entry["path"].lstrip("/")
+        raw_url = entry.get("download_url") or \
+                  f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{rel_path}"
+
+        if mirror == "raw":
+            url = raw_url
+        elif mirror == "ghproxy":
+            url = f"https://ghproxy.net/{raw_url}"
+        elif mirror == "tbedu":
+            url = f"https://mirror.ghproxy.com/{raw_url}"
+        elif mirror == "jsdelivr":
+            url = f"https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{rel_path}"
+        else:
+            url = raw_url
+
+        dlg = PreviewDialog(url, self)
+        dlg.exec_()
 
     def update_github_hosts_action(self):
         try:
