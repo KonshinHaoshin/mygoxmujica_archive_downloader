@@ -8,7 +8,7 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
     QMainWindow, QPushButton, QListWidget, QVBoxLayout, QWidget,
     QFileDialog, QComboBox, QLabel, QLineEdit, QProgressBar,
-    QMessageBox, QCheckBox
+    QMessageBox, QCheckBox, QHBoxLayout
 )
 
 from download_thread import DownloadThread
@@ -104,9 +104,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.search_bar)
         layout.addWidget(self.list_widget)
         layout.addWidget(self.update_hosts_button)
-        layout.addWidget(self.download_button)
+        btn_row = QHBoxLayout()
+        btn_row.addWidget(self.download_button, 1)
+        btn_row.addWidget(self.stop_button, 1)
+        layout.addLayout(btn_row)
+
         layout.addWidget(self.preview_button)
-        layout.addWidget(self.stop_button)
 
         self.mirror_label = QLabel("选择镜像源：")
         self.mirror_desc = QLabel("""
