@@ -18,6 +18,7 @@ from github_api import list_all_files_recursive, list_folders_only, fetch_file_l
 from github_hosts_updater import update_github_hosts
 from preview_worker import PreviewDialog
 from mirror_dialog import MIRRORS
+import cache
 
 
 class FolderLoaderWorker(QThread):
@@ -153,7 +154,8 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
 
-        self._timestamp_cache = {}
+        cache.load()
+        self._timestamp_cache = cache.get_all_timestamps()  # 直接引用持久化缓存字典
         self._timestamp_worker = None
         self._pending_workers = []  # 保持引用直到线程真正结束
         self._folder_loader = None
@@ -305,6 +307,7 @@ class MainWindow(QMainWindow):
 
     def on_timestamp_loaded(self, file_path, date_str):
         self._timestamp_cache[file_path] = date_str
+        cache.set_timestamp(file_path, date_str)
 
         # 只在当前选中文件匹配时更新 UI
         idx = self.list_widget.currentRow()
@@ -323,16 +326,25 @@ class MainWindow(QMainWindow):
         folder_name = self.folder_box.currentText()
         if not folder_name:
             return
-        self._timestamp_cache.clear()
+
+        # 有缓存先立即显示
+        cached = cache.get_file_list(folder_name)
+        if cached:
+            self.entries = cached
+            self.update_list_widget(cached)
+
+        # 始终在后台刷新
         self.load_button.setEnabled(False)
-        self.status_label.setText("正在加载目录内容...")
+        if not cached:
+            self.status_label.setText("正在加载目录内容...")
 
         self._folder_loader = FolderLoaderWorker(OWNER, REPO, folder_name)
-        self._folder_loader.finished.connect(self._on_folder_loaded)
+        self._folder_loader.finished.connect(lambda files: self._on_folder_loaded(folder_name, files))
         self._folder_loader.start()
 
-    def _on_folder_loaded(self, files):
+    def _on_folder_loaded(self, folder_name, files):
         self.load_button.setEnabled(True)
+        cache.set_file_list(folder_name, files)
         self.entries = files
         self.update_list_widget(files)
 
