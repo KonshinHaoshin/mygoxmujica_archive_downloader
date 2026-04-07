@@ -19,6 +19,20 @@ from github_hosts_updater import update_github_hosts
 from preview_worker import PreviewDialog
 from mirror_dialog import MIRRORS
 
+
+class FolderLoaderWorker(QThread):
+    finished = Signal(list)  # 文件列表
+
+    def __init__(self, owner, repo, folder_name, parent=None):
+        super().__init__(parent)
+        self.owner = owner
+        self.repo = repo
+        self.folder_name = folder_name
+
+    def run(self):
+        files = list_all_files_recursive(self.owner, self.repo, self.folder_name)
+        self.finished.emit([f for f in files if f["type"] == "file"])
+
 OWNER = "KonshinHaoshin"
 REPO = "mygoxmujica_archive"
 
@@ -141,12 +155,15 @@ class MainWindow(QMainWindow):
 
         self._timestamp_cache = {}
         self._timestamp_worker = None
+        self._folder_loader = None
 
         layout = QVBoxLayout()
         layout.addWidget(QLabel("选择目录："))
         layout.addWidget(self.folder_box)
-        layout.addWidget(self.announcement_button)
-        layout.addWidget(self.load_button)
+        top_btn_row = QHBoxLayout()
+        top_btn_row.addWidget(self.load_button, 1)
+        top_btn_row.addWidget(self.announcement_button, 1)
+        layout.addLayout(top_btn_row)
         layout.addWidget(self.search_bar)
         layout.addWidget(self.list_widget)
         layout.addWidget(self.update_hosts_button)
@@ -272,10 +289,9 @@ class MainWindow(QMainWindow):
             self._start_timestamp_worker(file_path)
 
     def _start_timestamp_worker(self, file_path):
-        # 取消上一个未完成的请求
         if self._timestamp_worker is not None and self._timestamp_worker.isRunning():
             self._timestamp_worker.cancel()
-            self._timestamp_worker.wait()
+            # 不阻塞等待，让旧线程自行结束
 
         self._timestamp_worker = TimestampWorker(file_path)
         self._timestamp_worker.finished.connect(self.on_timestamp_loaded)
@@ -299,10 +315,20 @@ class MainWindow(QMainWindow):
 
     def load_selected_folder_files(self):
         folder_name = self.folder_box.currentText()
+        if not folder_name:
+            return
         self._timestamp_cache.clear()
-        files = list_all_files_recursive(OWNER, REPO, folder_name)
-        self.entries = [f for f in files if f["type"] == "file"]
-        self.update_list_widget(self.entries)
+        self.load_button.setEnabled(False)
+        self.status_label.setText("正在加载目录内容...")
+
+        self._folder_loader = FolderLoaderWorker(OWNER, REPO, folder_name)
+        self._folder_loader.finished.connect(self._on_folder_loaded)
+        self._folder_loader.start()
+
+    def _on_folder_loaded(self, files):
+        self.load_button.setEnabled(True)
+        self.entries = files
+        self.update_list_widget(files)
 
     def update_list_widget(self, entries):
         self.list_widget.setUpdatesEnabled(False)
