@@ -1,9 +1,11 @@
 import requests
 import os
 
-def convert_to_mirror(url: str, mirror="ghproxy") -> str:
-    if mirror == "ghproxy":
-        return f"https://ghproxy.com/{url}"
+def convert_to_mirror(url: str, mirror="raw") -> str:
+    if mirror == "ghproxy.net":
+        return f"https://ghproxy.net/{url}"
+    elif mirror == "ghfast.top":
+        return f"https://ghfast.top/{url}"
     elif mirror == "jsdelivr":
         # 转换 raw.githubusercontent 链接为 jsDelivr 格式
         # 示例：raw.githubusercontent.com/user/repo/main/path → cdn.jsdelivr.net/gh/user/repo@main/path
@@ -12,7 +14,7 @@ def convert_to_mirror(url: str, mirror="ghproxy") -> str:
             "https://cdn.jsdelivr.net/gh/"
         ).replace("/main/", "@main/")
     else:
-        return url  # 默认不修改
+        return url  # raw 或未知：不修改
 
 def download_file(url, save_path, mirror="ghproxy"):
     real_url = convert_to_mirror(url, mirror)
@@ -22,13 +24,13 @@ def download_file(url, save_path, mirror="ghproxy"):
         r.raise_for_status()
         with open(save_path, "wb") as f:
             f.write(r.content)
-        print(f"✅ 下载完成: {save_path}")
+        print(f"下载完成: {save_path}")
     except Exception as e:
-        print(f"❌ 下载失败: {save_path}，错误信息: {e}")
+        print(f"下载失败: {save_path}，错误信息: {e}")
 
 
-def download_file_with_progress(url, save_path, mirror="ghproxy", progress_callback=None):
-    mirrors = ["ghproxy", "jsdelivr", "raw"]
+def download_file_with_progress(url, save_path, mirror="raw", progress_callback=None):
+    mirrors = ["raw", "jsdelivr", "ghproxy.net", "ghfast.top"]
     tried = []
 
     for current_mirror in [mirror] + [m for m in mirrors if m != mirror]:

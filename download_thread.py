@@ -1,18 +1,19 @@
-from PyQt5.QtCore import QThread, pyqtSignal
+from PySide6.QtCore import QThread, Signal
 import requests
 import os
 
-class DownloadThread(QThread):
-    progress = pyqtSignal(int)
-    finished = pyqtSignal(bool, str)
 
-    def __init__(self, url, save_path, mirror="ghproxy"):
+class DownloadThread(QThread):
+    progress = Signal(int)
+    finished = Signal(bool, str)
+
+    def __init__(self, url, save_path, mirror="raw"):
         super().__init__()
         self.url = url
         self.save_path = save_path
         self.mirror = mirror
         self._is_running = True
-        self.mirrors = ["ghproxy", "jsdelivr", "tbedu", "raw"]
+        self.mirrors = ["raw", "jsdelivr", "ghproxy.net", "ghfast.top"]
 
     def stop(self):
         self._is_running = False
@@ -31,7 +32,7 @@ class DownloadThread(QThread):
                     with open(self.save_path, 'wb') as f:
                         for chunk in r.iter_content(chunk_size=8192):
                             if not self._is_running:
-                                self.finished.emit(False, "❌ 下载已取消")
+                                self.finished.emit(False, "下载已取消")
                                 return
                             if chunk:
                                 f.write(chunk)
@@ -39,20 +40,20 @@ class DownloadThread(QThread):
                                 if total_size:
                                     percent = int(downloaded * 100 / total_size)
                                     self.progress.emit(percent)
-                    self.finished.emit(True, f"✅ 下载完成 (via {current_mirror}): {self.save_path}")
+                    self.finished.emit(True, f"下载完成 (via {current_mirror}): {self.save_path}")
                     return
-            except Exception as e:
-                continue  # 继续尝试下一个镜像
+            except Exception:
+                continue
 
-        self.finished.emit(False, f"❌ 所有镜像均下载失败（尝试过：{', '.join(tried)}）")
+        self.finished.emit(False, f"所有镜像均下载失败（尝试过：{', '.join(tried)}）")
 
     def convert_to_mirror(self, url, mirror):
-        if mirror == "ghproxy":
-            return f"https://ghproxy.com/{url}"
+        if mirror == "ghproxy.net":
+            return f"https://ghproxy.net/{url}"
+        elif mirror == "ghfast.top":
+            return f"https://ghfast.top/{url}"
         elif mirror == "jsdelivr":
             return url.replace("https://raw.githubusercontent.com/", "https://cdn.jsdelivr.net/gh/").replace("/main/", "@main/")
-        elif mirror == "tbedu":
-            return f"https://github.tbedu.top/{url}"
         elif mirror == "raw":
             return url
         return url
