@@ -82,7 +82,7 @@ def extract_archive(file_path, extract_to):
 
 
 class TimestampWorker(QThread):
-    finished = Signal(str, str)  # (file_path, 日期字符串或空)
+    result = Signal(str, str)  # (file_path, 日期字符串或空)
 
     def __init__(self, file_path, parent=None):
         super().__init__(parent)
@@ -99,7 +99,7 @@ class TimestampWorker(QThread):
         if self._is_cancelled:
             return
         if err == "rate_limit":
-            self.finished.emit(self.file_path, "__rate_limit__")
+            self.result.emit(self.file_path, "__rate_limit__")
             return
         if commit:
             try:
@@ -107,11 +107,11 @@ class TimestampWorker(QThread):
                 dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
                 local_dt = dt.astimezone()
                 formatted = local_dt.strftime("%Y-%m-%d %H:%M")
-                self.finished.emit(self.file_path, formatted)
+                self.result.emit(self.file_path, formatted)
                 return
             except Exception:
                 pass
-        self.finished.emit(self.file_path, "")
+        self.result.emit(self.file_path, "")
 
 
 class MainWindow(QMainWindow):
@@ -155,6 +155,7 @@ class MainWindow(QMainWindow):
 
         self._timestamp_cache = {}
         self._timestamp_worker = None
+        self._pending_workers = []  # 保持引用直到线程真正结束
         self._folder_loader = None
 
         layout = QVBoxLayout()
@@ -289,13 +290,18 @@ class MainWindow(QMainWindow):
             self._start_timestamp_worker(file_path)
 
     def _start_timestamp_worker(self, file_path):
-        if self._timestamp_worker is not None and self._timestamp_worker.isRunning():
-            self._timestamp_worker.cancel()
-            # 不阻塞等待，让旧线程自行结束
+        # 取消所有仍在运行的旧请求
+        for w in self._pending_workers:
+            if w.isRunning():
+                w.cancel()
 
-        self._timestamp_worker = TimestampWorker(file_path)
-        self._timestamp_worker.finished.connect(self.on_timestamp_loaded)
-        self._timestamp_worker.start()
+        worker = TimestampWorker(file_path)
+        worker.result.connect(self.on_timestamp_loaded)
+        # 线程结束后从列表移除，释放引用
+        worker.finished.connect(lambda: self._pending_workers.remove(worker))
+        self._pending_workers.append(worker)
+        self._timestamp_worker = worker
+        worker.start()
 
     def on_timestamp_loaded(self, file_path, date_str):
         self._timestamp_cache[file_path] = date_str
