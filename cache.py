@@ -5,9 +5,10 @@ import os
 _CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache.json")
 
 _data = {
-    "file_lists": {},   # folder_name -> [file entry, ...]
-    "timestamps": {},   # file_path   -> date_str | "__rate_limit__"
-    "commits": [],      # commit list (raw GitHub API dicts)
+    "file_lists": {},    # folder_name -> [file entry, ...]
+    "timestamps": {},    # file_path   -> date_str | "__rate_limit__"
+    "commits": [],       # commit list (raw GitHub API dicts)
+    "commit_files": {},  # sha -> [filename, ...]
 }
 
 
@@ -64,4 +65,14 @@ def get_commits():
 
 def set_commits(commits):
     _data["commits"] = commits
+    _save()
+
+
+# ── commit 变更文件 ───────────────────────────────────────
+def get_commit_files(sha):
+    return _data["commit_files"].get(sha)
+
+
+def set_commit_files(sha, files):
+    _data["commit_files"][sha] = files
     _save()
