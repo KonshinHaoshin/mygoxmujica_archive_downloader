@@ -1,5 +1,5 @@
 # mirror_dialog.py
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QComboBox, QPushButton
+from PySide6.QtWidgets import QComboBox, QDialog, QLabel, QPushButton, QVBoxLayout
 
 
 MIRRORS = [
@@ -7,6 +7,7 @@ MIRRORS = [
     ("jsdelivr（CDN 加速，国内稳定，有缓存延迟）", "jsdelivr"),
     ("ghproxy.net（代理加速，支持大文件）", "ghproxy.net"),
     ("ghfast.top（代理加速，备用）", "ghfast.top"),
+    ("shelter（Shelter 镜像）", "shelter"),
 ]
 
 
@@ -22,7 +23,7 @@ class MirrorSelectDialog(QDialog):
         self.mirror_box = QComboBox()
         for label, key in MIRRORS:
             self.mirror_box.addItem(label, key)
-        self.mirror_box.setCurrentIndex(0)  # 默认 raw
+        self.mirror_box.setCurrentIndex(0)
         layout.addWidget(self.mirror_box)
 
         confirm_btn = QPushButton("确定")
