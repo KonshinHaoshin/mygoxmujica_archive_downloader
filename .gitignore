@@ -5,3 +5,6 @@ dist
 build
 main.spec
 .env
+rustcode/
+.claude/
+CLAUDE.mdcache.json

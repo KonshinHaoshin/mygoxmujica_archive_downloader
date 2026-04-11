@@ -2,20 +2,40 @@
 import os
 import sys
 import subprocess
+from datetime import datetime
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import (
+from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import (
     QMainWindow, QPushButton, QListWidget, QVBoxLayout, QWidget,
     QFileDialog, QComboBox, QLabel, QLineEdit, QProgressBar,
     QMessageBox, QCheckBox, QHBoxLayout
 )
 
+from announcement_dialog import AnnouncementDialog
 from download_thread import DownloadThread
-from github_api import list_all_files_recursive, list_folders_only
-from downloader import download_file, download_file_with_progress
+from github_api import list_all_files_recursive, list_folders_only, fetch_file_last_commit
 from github_hosts_updater import update_github_hosts
-from preview_worker import PreviewDialog  # 新增导入
+from preview_worker import PreviewDialog
+from mirror_dialog import MIRRORS
+import cache
+
+
+class FolderLoaderWorker(QThread):
+    finished = Signal(list)  # 文件列表
+
+    def __init__(self, owner, repo, folder_name, parent=None):
+        super().__init__(parent)
+        self.owner = owner
+        self.repo = repo
+        self.folder_name = folder_name
+
+    def run(self):
+        files = list_all_files_recursive(self.owner, self.repo, self.folder_name)
+        self.finished.emit([f for f in files if f["type"] == "file"])
+
+OWNER = "KonshinHaoshin"
+REPO = "mygoxmujica_archive"
 
 
 def resource_path(relative_path):
@@ -45,21 +65,54 @@ def is_supported_archive(filename):
 def extract_archive(file_path, extract_to):
     exe_path = resource_path("7-Zip/7z.exe")
     if not os.path.exists(exe_path):
-        print("❌ 找不到 7z.exe，请确认路径正确")
+        print("找不到 7z.exe，请确认路径正确")
         return False
 
     cmd = [exe_path, "x", file_path, f"-o{extract_to}", "-y"]
     try:
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if result.returncode == 0:
-            print("✅ 使用 7-Zip 解压成功")
+            print("使用 7-Zip 解压成功")
             return True
         else:
-            print("❌ 7-Zip 解压失败：", result.stderr)
+            print("7-Zip 解压失败：", result.stderr)
             return False
     except Exception as e:
-        print("❌ 解压过程中出现异常：", e)
+        print("解压过程中出现异常：", e)
         return False
+
+
+class TimestampWorker(QThread):
+    result = Signal(str, str)  # (file_path, 日期字符串或空)
+
+    def __init__(self, file_path, parent=None):
+        super().__init__(parent)
+        self.file_path = file_path
+        self._is_cancelled = False
+
+    def cancel(self):
+        self._is_cancelled = True
+
+    def run(self):
+        if self._is_cancelled:
+            return
+        commit, err = fetch_file_last_commit(OWNER, REPO, self.file_path)
+        if self._is_cancelled:
+            return
+        if err == "rate_limit":
+            self.result.emit(self.file_path, "__rate_limit__")
+            return
+        if commit:
+            try:
+                date_str = commit["commit"]["author"]["date"]
+                dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                local_dt = dt.astimezone()
+                formatted = local_dt.strftime("%Y-%m-%d %H:%M")
+                self.result.emit(self.file_path, formatted)
+                return
+            except Exception:
+                pass
+        self.result.emit(self.file_path, "")
 
 
 class MainWindow(QMainWindow):
@@ -72,35 +125,48 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(QIcon(resource_path("icon.png")))
         self.setWindowTitle("mygoxmujica社区资源下载器 关注B站东山燃灯寺谢谢喵~")
 
-        # 控件
         self.folder_box = QComboBox()
         self.search_bar = QLineEdit()
-        self.search_bar.setPlaceholderText("🔍 输入关键字以筛选")
+        self.search_bar.setPlaceholderText("输入关键字以筛选")
         self.list_widget = QListWidget()
         self.load_button = QPushButton("加载选中目录内容")
         self.download_button = QPushButton("下载选中项")
-        self.preview_button = QPushButton("预览图片")  # 新增按钮
-        self.stop_button = QPushButton("🛑 停止下载")
+        self.preview_button = QPushButton("预览图片")
+        self.stop_button = QPushButton("停止下载")
         self.stop_button.setEnabled(True)
         self.stop_button.clicked.connect(self.stop_download)
 
         self.mirror_box = QComboBox()
-        self.mirror_box.addItems(["jsdelivr", "raw", "ghproxy", "tbedu"])
-        self.mirror_box.setCurrentText(default_mirror)
+        for label, key in MIRRORS:
+            self.mirror_box.addItem(label, key)
+        self.mirror_box.setCurrentIndex(
+            next((i for i, (_, k) in enumerate(MIRRORS) if k == default_mirror), 0)
+        )
         self.list_widget.currentRowChanged.connect(self.update_file_info)
         self.last_save_dir = os.getcwd()
 
-        self.update_hosts_button = QPushButton("💻 更新 GitHub Hosts（需要管理员权限）")
+        self.update_hosts_button = QPushButton("更新 GitHub Hosts（需要管理员权限）")
         self.update_hosts_button.clicked.connect(self.update_github_hosts_action)
+
+        self.announcement_button = QPushButton("查看仓库更新公告")
+        self.announcement_button.clicked.connect(self.show_announcement)
 
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
 
-        # 布局
+        cache.load()
+        self._timestamp_cache = cache.get_all_timestamps()  # 直接引用持久化缓存字典
+        self._timestamp_worker = None
+        self._pending_workers = []  # 保持引用直到线程真正结束
+        self._folder_loader = None
+
         layout = QVBoxLayout()
         layout.addWidget(QLabel("选择目录："))
         layout.addWidget(self.folder_box)
-        layout.addWidget(self.load_button)
+        top_btn_row = QHBoxLayout()
+        top_btn_row.addWidget(self.load_button, 1)
+        top_btn_row.addWidget(self.announcement_button, 1)
+        layout.addLayout(top_btn_row)
         layout.addWidget(self.search_bar)
         layout.addWidget(self.list_widget)
         layout.addWidget(self.update_hosts_button)
@@ -113,10 +179,10 @@ class MainWindow(QMainWindow):
 
         self.mirror_label = QLabel("选择镜像源：")
         self.mirror_desc = QLabel("""
-        🔹 jsdelivr：✅ 国内高速稳定，适合小/中级文件，仅对更新有缓存延迟  
-        🔹 raw：直连 GitHub，实时源码，适合调试，但国内不稳定  
-        🔹 ghproxy：备用方案，但已不可靠，易超时或无响应  
-        🔹 tbedu：📦 新增！tbedu 直链镜像，适合 raw.githubusercontent 文件加速
+        raw：直连 GitHub，实时源码，国内可能不稳定
+        jsdelivr：CDN 加速，国内稳定，适合小/中型文件，有缓存延迟
+        ghproxy.net：代理加速，支持大文件，国内可用
+        ghfast.top：代理加速，备用方案
         """)
         self.mirror_desc.setWordWrap(True)
 
@@ -128,7 +194,7 @@ class MainWindow(QMainWindow):
         self.auto_extract_checkbox.setChecked(True)
         layout.addWidget(self.auto_extract_checkbox)
 
-        layout.addWidget(QLabel("⬇ 当前状态："))
+        layout.addWidget(QLabel("当前状态："))
         layout.addWidget(self.status_label)
 
         self.progress_bar = QProgressBar()
@@ -140,16 +206,18 @@ class MainWindow(QMainWindow):
         container.setLayout(layout)
         self.setCentralWidget(container)
 
-        # 信号连接
         self.load_button.clicked.connect(self.load_selected_folder_files)
         self.download_button.clicked.connect(self.download_selected)
         self.search_bar.textChanged.connect(self.filter_list)
-        self.preview_button.clicked.connect(self.preview_selected)  # 绑定预览
+        self.preview_button.clicked.connect(self.preview_selected)
 
-        # 初始化
         self.entries = []
         self.filtered_entries = []
         self.load_root_folders()
+
+    def show_announcement(self):
+        dlg = AnnouncementDialog(OWNER, REPO, self)
+        dlg.exec()
 
     def preview_selected(self):
         idx = self.list_widget.currentRow()
@@ -163,38 +231,35 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "提示", "选中的不是图片文件")
             return
 
-        # 根据镜像源拼 URL
-        mirror = self.mirror_box.currentText()
-        owner, repo, branch = "KonshinHaoshin", "mygoxmujica_archive", "main"
+        mirror = self.mirror_box.currentData()
+        owner, repo, branch = OWNER, REPO, "main"
         rel_path = entry["path"].lstrip("/")
-        raw_url = entry.get("download_url") or \
-                  f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{rel_path}"
+        raw_url = entry.get("download_url") or f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{rel_path}"
 
         if mirror == "raw":
             url = raw_url
-        elif mirror == "ghproxy":
+        elif mirror == "ghproxy.net":
             url = f"https://ghproxy.net/{raw_url}"
-        elif mirror == "tbedu":
-            url = f"https://mirror.ghproxy.com/{raw_url}"
+        elif mirror == "ghfast.top":
+            url = f"https://ghfast.top/{raw_url}"
         elif mirror == "jsdelivr":
             url = f"https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{rel_path}"
         else:
             url = raw_url
 
         dlg = PreviewDialog(url, self)
-        dlg.exec_()
+        dlg.exec()
 
     def update_github_hosts_action(self):
         try:
             update_github_hosts()
-            QMessageBox.information(self, "Hosts 更新", "✅ GitHub hosts 已更新完成，请刷新网络生效。")
+            QMessageBox.information(self, "Hosts 更新", "GitHub hosts 已更新完成，请刷新网络生效。")
         except Exception as e:
-            QMessageBox.critical(self, "Hosts 更新失败", f"❌ 更新失败：{str(e)}\n请尝试以管理员身份运行本程序。")
-
+            QMessageBox.critical(self, "Hosts 更新失败", f"更新失败：{str(e)}\n请尝试以管理员身份运行本程序。")
 
     def update_file_info(self, index):
         if index < 0 or index >= len(self.filtered_entries):
-            self.status_label.setText("📂 未选择任何文件")
+            self.status_label.setText("未选择任何文件")
             return
 
         entry = self.filtered_entries[index]
@@ -208,33 +273,91 @@ class MainWindow(QMainWindow):
                 size_str = f"{size_bytes / 1024:.1f} KB"
             else:
                 size_str = f"{size_bytes / (1024 * 1024):.2f} MB"
-            self.status_label.setText(f"📁 选中: {name} (大小：{size_str})")
+            base_info = f"选中: {name} （大小：{size_str}）"
         else:
-            self.status_label.setText(f"📁 选中: {name} (大小未知)")
+            base_info = f"选中: {name} （大小未知）"
+
+        file_path = entry["path"]
+
+        if file_path in self._timestamp_cache:
+            cached = self._timestamp_cache[file_path]
+            if cached == "__rate_limit__":
+                self.status_label.setText(f"{base_info}\n上传时间：获取失败（API 频率限制，建议配置 GITHUB_TOKEN）")
+            elif cached:
+                self.status_label.setText(f"{base_info}\n上传时间：{cached}")
+            else:
+                self.status_label.setText(f"{base_info}\n上传时间：获取失败")
+        else:
+            self.status_label.setText(f"{base_info}\n正在获取上传时间...")
+            self._start_timestamp_worker(file_path)
+
+    def _start_timestamp_worker(self, file_path):
+        # 取消所有仍在运行的旧请求
+        for w in self._pending_workers:
+            if w.isRunning():
+                w.cancel()
+
+        worker = TimestampWorker(file_path)
+        worker.result.connect(self.on_timestamp_loaded)
+        # 线程结束后从列表移除，释放引用
+        worker.finished.connect(lambda: self._pending_workers.remove(worker))
+        self._pending_workers.append(worker)
+        self._timestamp_worker = worker
+        worker.start()
+
+    def on_timestamp_loaded(self, file_path, date_str):
+        self._timestamp_cache[file_path] = date_str
+        cache.set_timestamp(file_path, date_str)
+
+        # 只在当前选中文件匹配时更新 UI
+        idx = self.list_widget.currentRow()
+        if 0 <= idx < len(self.filtered_entries):
+            current_entry = self.filtered_entries[idx]
+            if current_entry["path"] == file_path:
+                self.update_file_info(idx)
 
     def load_root_folders(self):
-        folders = list_folders_only("KonshinHaoshin", "mygoxmujica_archive")
+        folders = list_folders_only(OWNER, REPO)
         self.folder_box.clear()
         for folder in folders:
             self.folder_box.addItem(folder["name"])
 
     def load_selected_folder_files(self):
         folder_name = self.folder_box.currentText()
-        files = list_all_files_recursive("KonshinHaoshin", "mygoxmujica_archive", folder_name)
-        self.entries = [f for f in files if f["type"] == "file"]
-        self.update_list_widget(self.entries)
+        if not folder_name:
+            return
+
+        # 有缓存先立即显示
+        cached = cache.get_file_list(folder_name)
+        if cached:
+            self.entries = cached
+            self.update_list_widget(cached)
+
+        # 始终在后台刷新
+        self.load_button.setEnabled(False)
+        if not cached:
+            self.status_label.setText("正在加载目录内容...")
+
+        self._folder_loader = FolderLoaderWorker(OWNER, REPO, folder_name)
+        self._folder_loader.finished.connect(lambda files: self._on_folder_loaded(folder_name, files))
+        self._folder_loader.start()
+
+    def _on_folder_loaded(self, folder_name, files):
+        self.load_button.setEnabled(True)
+        cache.set_file_list(folder_name, files)
+        self.entries = files
+        self.update_list_widget(files)
 
     def update_list_widget(self, entries):
-        self.list_widget.setUpdatesEnabled(False)  # 暂停刷新
-
+        self.list_widget.setUpdatesEnabled(False)
         self.list_widget.clear()
         for item in entries:
             self.list_widget.addItem(item["path"])
 
         self.filtered_entries = entries
-        self.status_label.setText(f"📄 共 {len(entries)} 个文件（含子目录）")
+        self.status_label.setText(f"共 {len(entries)} 个文件（含子目录）")
 
-        self.list_widget.setUpdatesEnabled(True)  # 恢复并强制刷新
+        self.list_widget.setUpdatesEnabled(True)
         self.list_widget.repaint()
 
     def filter_list(self, text):
@@ -255,11 +378,11 @@ class MainWindow(QMainWindow):
         relative_path = entry["path"].replace("/", os.sep)
         save_path = os.path.join(save_dir, relative_path)
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        mirror = self.mirror_box.currentText()
+        mirror = self.mirror_box.currentData()
 
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setVisible(True)
-        self.status_label.setText(f"⬇ 正在下载: {save_path}")
+        self.status_label.setText(f"正在下载: {save_path}")
         self.stop_button.setEnabled(True)
 
         self.thread = DownloadThread(entry["download_url"], save_path, mirror)
@@ -275,7 +398,7 @@ class MainWindow(QMainWindow):
     def stop_download(self):
         if hasattr(self, 'thread') and self.thread.isRunning():
             self.thread.stop()
-            self.status_label.setText("🚩 用户已请求中止下载")
+            self.status_label.setText("用户已请求中止下载")
             self.stop_button.setEnabled(False)
 
     def on_download_finished(self, success, message):

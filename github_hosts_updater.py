@@ -27,9 +27,9 @@ def update_hosts(domain_ip_map):
                 content += f"\n{ip} {domain} # github加速\n"
             f.write(content)
             f.truncate()
-        print("✅ hosts 更新完成")
+        print("hosts 更新完成")
     except Exception as e:
-        print(f"❌ 写入 hosts 失败: {e}")
+        print(f"写入 hosts 失败: {e}")
 
 def update_github_hosts():
     domain_ip_map = {}
