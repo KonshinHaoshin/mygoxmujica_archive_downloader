@@ -123,7 +123,7 @@ class MainWindow(QMainWindow):
             self.setStyleSheet(f.read())
 
         self.setWindowIcon(QIcon(resource_path("icon.png")))
-        self.setWindowTitle("mygoxmujica社区资源下载器 v2.0 关注B站东山燃灯寺谢谢喵~")
+        self.setWindowTitle("mygoxmujica社区资源下载器 v2.0.1 关注B站东山燃灯寺谢谢喵~")
 
         self.folder_box = QComboBox()
         self.search_bar = QLineEdit()
@@ -246,6 +246,8 @@ class MainWindow(QMainWindow):
             url = f"https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{rel_path}"
         elif mirror == "shelter":
             url = f"https://git.shelter.net.cn/Shelter/shelter_archive/raw/branch/{branch}/{rel_path}"
+        elif mirror == "cnb":
+            url = f"https://cnb.cool/shelter.net.cn/mygoxmujica_archive/-/git/raw/main/{rel_path}?download=true"
         else:
             url = raw_url
 
