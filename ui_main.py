@@ -123,7 +123,7 @@ class MainWindow(QMainWindow):
             self.setStyleSheet(f.read())
 
         self.setWindowIcon(QIcon(resource_path("icon.png")))
-        self.setWindowTitle("mygoxmujica社区资源下载器 v2.0 关注B站东山燃灯寺谢谢喵~")
+        self.setWindowTitle("mygoxmujica社区资源下载器 v2.0.1 关注B站东山燃灯寺谢谢喵~")
 
         self.folder_box = QComboBox()
         self.search_bar = QLineEdit()
