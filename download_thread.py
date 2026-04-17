@@ -13,7 +13,7 @@ class DownloadThread(QThread):
         self.save_path = save_path
         self.mirror = mirror
         self._is_running = True
-        self.mirrors = ["raw", "jsdelivr", "ghproxy.net", "ghfast.top", "shelter"]
+        self.mirrors = ["cnb", "raw", "jsdelivr", "ghproxy.net", "ghfast.top", "shelter"]
 
     def stop(self):
         self._is_running = False
@@ -59,6 +59,12 @@ class DownloadThread(QThread):
                 "https://raw.githubusercontent.com/KonshinHaoshin/mygoxmujica_archive/main/",
                 "https://git.shelter.net.cn/Shelter/shelter_archive/raw/branch/main/"
             )
+        elif mirror == "cnb":
+            cnb_base = "https://cnb.cool/shelter.net.cn/mygoxmujica_archive/-/git/raw/main/"
+            return url.replace(
+                "https://raw.githubusercontent.com/KonshinHaoshin/mygoxmujica_archive/main/",
+                cnb_base
+            ) + "?download=true"
         elif mirror == "raw":
             return url
         return url

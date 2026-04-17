@@ -246,6 +246,8 @@ class MainWindow(QMainWindow):
             url = f"https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{rel_path}"
         elif mirror == "shelter":
             url = f"https://git.shelter.net.cn/Shelter/shelter_archive/raw/branch/{branch}/{rel_path}"
+        elif mirror == "cnb":
+            url = f"https://cnb.cool/shelter.net.cn/mygoxmujica_archive/-/git/raw/main/{rel_path}?download=true"
         else:
             url = raw_url
 

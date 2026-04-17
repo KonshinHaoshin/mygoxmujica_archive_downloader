@@ -1,8 +1,9 @@
-# mirror_dialog.py
+﻿# mirror_dialog.py
 from PySide6.QtWidgets import QComboBox, QDialog, QLabel, QPushButton, QVBoxLayout
 
 
 MIRRORS = [
+    ("cnb（腾讯云原生构建，优先推荐）", "cnb"),
     ("raw（直连 GitHub，实时但国内不稳定）", "raw"),
     ("jsdelivr（CDN 加速，国内稳定，有缓存延迟）", "jsdelivr"),
     ("ghproxy.net（代理加速，支持大文件）", "ghproxy.net"),
